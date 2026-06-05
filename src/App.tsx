@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { StoreProvider, useStore } from './store';
-import { loadState } from './utils/storage';
-import { downloadMarkdown } from './utils/markdown';
+import { loadState, saveMdPath, loadMdPath } from './utils/storage';
+import { generateMarkdown, downloadMarkdown } from './utils/markdown';
 import StrategyGroup from './components/StrategyGroup';
 import { StrategyDialog } from './components/EditDialogs';
 import './App.css';
@@ -9,6 +9,10 @@ import './App.css';
 function AppInner() {
   const { state, dispatch, undo, redo, canUndo, canRedo } = useStore();
   const [showAddStrategy, setShowAddStrategy] = useState(false);
+
+  // ── Markdown save-file path ──────────────────────────────────────────────
+  const [mdSavePath, setMdSavePath] = useState<string | null>(() => loadMdPath());
+  const isFirstRender = useRef(true);
 
   // Load persisted state on mount
   useEffect(() => {
@@ -19,7 +23,42 @@ function AppInner() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-write markdown to the chosen file on every state change
+  useEffect(() => {
+    // Skip the very first render (initial empty state before LOAD_STATE fires)
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    if (!mdSavePath || !window.electronAPI) return;
+    const md = generateMarkdown(state);
+    window.electronAPI.writeMarkdownFile(mdSavePath, md).catch(err => {
+      console.warn('Failed to write markdown file', err);
+    });
+  }, [state, mdSavePath]);
+
+  // ── Open file picker and persist chosen path ─────────────────────────────
+  async function handleChooseSaveFile() {
+    if (window.electronAPI) {
+      const chosen = await window.electronAPI.chooseMarkdownFile(
+        mdSavePath ?? undefined,
+      );
+      if (chosen) {
+        setMdSavePath(chosen);
+        saveMdPath(chosen);
+        // Write immediately so the file exists right away
+        window.electronAPI.writeMarkdownFile(chosen, generateMarkdown(state)).catch(
+          err => console.warn('Failed to write markdown file', err),
+        );
+      }
+    } else {
+      // Browser fallback: download on demand
+      downloadMarkdown(state);
+    }
+  }
+
   const isEmpty = state.strategyOrder.length === 0;
+  const saveFileName = mdSavePath ? mdSavePath.split(/[\\/]/).pop() : null;
 
   return (
     <div className="app">
@@ -50,10 +89,14 @@ function AppInner() {
           <div className="topbar-divider" />
           <button
             className="btn btn-secondary"
-            onClick={() => downloadMarkdown(state)}
-            title="Export as Markdown"
+            onClick={handleChooseSaveFile}
+            title={
+              mdSavePath
+                ? `Auto-saving to: ${mdSavePath}\nClick to change`
+                : 'Choose a file to auto-save markdown on every change'
+            }
           >
-            📄 Export MD
+            📄 {saveFileName ?? 'Set Save File…'}
           </button>
           <button
             className="btn btn-primary"

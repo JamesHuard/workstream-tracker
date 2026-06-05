@@ -1,6 +1,7 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import fs from 'node:fs/promises'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -22,7 +23,23 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  // ── IPC handlers ────────────────────────────────────────────────────────
+  ipcMain.handle('md:choose-file', async (_event, defaultPath?: string) => {
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Choose Markdown save location',
+      defaultPath: defaultPath ?? 'workstream-tracker.md',
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
+    })
+    return canceled ? null : filePath
+  })
+
+  ipcMain.handle('md:write-file', async (_event, filePath: string, content: string) => {
+    await fs.writeFile(filePath, content, 'utf8')
+  })
+
+  createWindow()
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
