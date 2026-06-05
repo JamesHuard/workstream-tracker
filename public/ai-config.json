@@ -1,0 +1,20 @@
+{
+  "_comment": "Set 'backend' to 'copilot', 'openai', or 'custom'.",
+  "backend": "copilot",
+  "copilot": {
+    "model": "gpt-4o",
+    "apiKey": "",
+    "clientId": "",
+    "_comment": "apiKey: GitHub PAT with Copilot access (takes priority). clientId: GitHub OAuth App ID for in-app 'Sign in with GitHub' flow (device flow). If neither is set, the GitHub CLI token (~/.config/gh/hosts.yml) is used automatically. Endpoint defaults to https://api.githubcopilot.com/chat/completions"
+  },
+  "openai": {
+    "model": "gpt-4o",
+    "apiKey": "",
+    "_comment": "Set apiKey to your OpenAI API key. Endpoint defaults to https://api.openai.com/v1/chat/completions"
+  },
+  "custom": {
+    "endpoint": "http://localhost:11434/api/generate",
+    "model": "llama3",
+    "_comment": "Ollama-compatible generate endpoint"
+  }
+}
