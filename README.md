@@ -15,13 +15,35 @@ A GUI tool for tracking many workstreams simultaneously, with automatic markdown
 - **Markdown export** — export the full board as a human-readable markdown file
 - **AI suggestions** — click "✨ AI Suggest" in the engagement dialog to auto-populate fields (defaults to GitHub Copilot; configurable)
 
-## Getting Started
+## Standalone Desktop App (Electron)
+
+Workstream Tracker runs as a native desktop application via [Electron](https://www.electronjs.org/).
 
 ```bash
 npm install
-npm run dev        # development server
-npm run build      # production build
-npm run preview    # preview production build
+
+# Development — opens the app window with hot-reload
+npm run dev
+
+# Production build + package installer
+npm run electron:build
+```
+
+`electron:build` produces platform-native installers in `release/<version>/`:
+
+| Platform | Output |
+|----------|--------|
+| macOS    | `.dmg` + `.zip` |
+| Windows  | NSIS `.exe` installer |
+| Linux    | `.AppImage` + `.deb` |
+
+> **Cross-platform packaging** requires the target OS (or a CI matrix). Run `electron:build` on the machine/platform you want to package for.
+
+## Web Dev Server (browser only)
+
+```bash
+npm run build      # production web build → dist/
+npm run preview    # preview production build in browser
 npm run lint       # run ESLint
 ```
 
@@ -49,5 +71,5 @@ State is persisted as JSON in `localStorage` (key: `workstream-tracker-state`) a
 ## Tech Stack
 
 - React 19 + TypeScript
-- Vite
+- Vite + Electron
 - Pure CSS (no UI framework dependency)
