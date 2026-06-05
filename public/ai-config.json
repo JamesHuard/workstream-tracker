@@ -1,10 +1,19 @@
 {
+  "_comment": "Set 'backend' to 'copilot', 'openai', or 'custom'.",
   "backend": "copilot",
   "copilot": {
-    "model": "gpt-4o"
+    "model": "gpt-4o",
+    "apiKey": "",
+    "_comment": "Set apiKey to your GitHub personal access token (with Copilot access). Endpoint defaults to https://api.githubcopilot.com/chat/completions"
+  },
+  "openai": {
+    "model": "gpt-4o",
+    "apiKey": "",
+    "_comment": "Set apiKey to your OpenAI API key. Endpoint defaults to https://api.openai.com/v1/chat/completions"
   },
   "custom": {
     "endpoint": "http://localhost:11434/api/generate",
-    "model": "llama3"
+    "model": "llama3",
+    "_comment": "Ollama-compatible generate endpoint"
   }
 }

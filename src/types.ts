@@ -46,7 +46,8 @@ export interface ContextMenuState {
 }
 
 export interface AiConfig {
-  backend: string;
-  copilot: { model: string };
+  backend: 'copilot' | 'openai' | 'custom';
+  copilot: { model: string; apiKey?: string; endpoint?: string };
+  openai: { model: string; apiKey: string; endpoint?: string };
   custom: { endpoint: string; model: string };
 }

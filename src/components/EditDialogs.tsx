@@ -382,7 +382,13 @@ export function EngagementDialog({
         setTitle(result.title);
         setDescription(result.description);
       } else {
-        alert('AI suggestion is not available. Check the console for details.');
+        alert(
+          'AI suggestion unavailable.\n\n' +
+          'Open public/ai-config.json and set your API key:\n' +
+          '• copilot: add "apiKey" (GitHub personal access token with Copilot access)\n' +
+          '• openai:  add "apiKey" (OpenAI API key) and set "backend": "openai"\n' +
+          '• custom:  set "endpoint" to your Ollama-compatible URL and "backend": "custom"',
+        );
       }
     } finally {
       setSuggesting(false);
