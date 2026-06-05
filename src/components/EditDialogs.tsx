@@ -1,6 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { Goal, Engagement, EngagementStatus } from '../types';
 import { suggestEngagement } from '../utils/ai';
+import { startDeviceFlow, pollForToken, setCachedToken, openBrowser } from '../utils/github-auth';
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
@@ -334,6 +335,131 @@ export function OperationDialog({ initial, onSave, onClose }: OperationDialogPro
   );
 }
 
+// ─── GitHub Sign-In Dialog (device flow) ─────────────────────────────────────
+
+interface GitHubSignInDialogProps {
+  clientId: string;
+  onSuccess: (token: string) => void;  onClose: () => void;
+}
+
+function GitHubSignInDialog({ clientId, onSuccess, onClose }: GitHubSignInDialogProps) {
+  type Step = 'idle' | 'loading' | 'waiting' | 'error';
+  const [step, setStep] = useState<Step>('idle');
+  const [userCode, setUserCode] = useState('');
+  const [verificationUri, setVerificationUri] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
+
+  async function start() {
+    setStep('loading');
+    setErrorMsg('');
+    try {
+      const flow = await startDeviceFlow(clientId);
+      setUserCode(flow.userCode);
+      setVerificationUri(flow.verificationUri);
+      setStep('waiting');
+      openBrowser(flow.verificationUri);
+
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
+      const token = await pollForToken(clientId, flow.deviceCode, flow.interval, ctrl.signal);
+      if (token) {
+        setCachedToken(token);
+        onSuccess(token);
+      } else if (!ctrl.signal.aborted) {
+        setStep('error');
+        setErrorMsg('Authorization timed out or was denied. Please try again.');
+      }
+    } catch (e) {
+      setStep('error');
+      setErrorMsg(e instanceof Error ? e.message : 'Sign-in failed.');
+    }
+  }
+
+  function cancel() {
+    abortRef.current?.abort();
+    onClose();
+  }
+
+  return (
+    <Overlay title="Sign in with GitHub" onClose={cancel}>
+      <p style={{ fontSize: 13, color: '#a6adc8', marginTop: 0 }}>
+        Authenticate with GitHub to use Copilot AI suggestions.
+      </p>
+
+      {step === 'idle' && (
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <SecondaryButton onClick={cancel}>Cancel</SecondaryButton>
+          <PrimaryButton onClick={start}>Continue</PrimaryButton>
+        </div>
+      )}
+
+      {step === 'loading' && (
+        <p style={{ fontSize: 13, color: '#a6adc8', textAlign: 'center' }}>
+          ⏳ Starting device flow…
+        </p>
+      )}
+
+      {step === 'waiting' && (
+        <>
+          <div
+            style={{
+              background: '#313244',
+              borderRadius: 8,
+              padding: '14px 18px',
+              marginBottom: 16,
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: 11, color: '#a6adc8', marginBottom: 6 }}>
+              Enter this code at{' '}
+              <a
+                href={verificationUri}
+                onClick={e => { e.preventDefault(); openBrowser(verificationUri); }}
+                style={{ color: '#89b4fa' }}
+              >
+                {verificationUri}
+              </a>
+            </div>
+            <div
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 26,
+                letterSpacing: 6,
+                color: '#cdd6f4',
+                fontWeight: 700,
+              }}
+            >
+              {userCode}
+            </div>
+          </div>
+          <p style={{ fontSize: 12, color: '#a6adc8', margin: '0 0 16px' }}>
+            ⏳ Waiting for authorization… The browser should have opened automatically.
+          </p>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <SecondaryButton onClick={cancel}>Cancel</SecondaryButton>
+            <SecondaryButton onClick={() => openBrowser(verificationUri)}>
+              Open Browser Again
+            </SecondaryButton>
+          </div>
+        </>
+      )}
+
+      {step === 'error' && (
+        <>
+          <p style={{ fontSize: 13, color: '#f38ba8', marginBottom: 16 }}>{errorMsg}</p>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <SecondaryButton onClick={cancel}>Cancel</SecondaryButton>
+            <PrimaryButton onClick={start}>Try Again</PrimaryButton>
+          </div>
+        </>
+      )}
+    </Overlay>
+  );
+}
+
 // ─── Engagement Dialog ────────────────────────────────────────────────────────
 
 interface EngagementDialogProps {
@@ -358,6 +484,7 @@ export function EngagementDialog({
     initial?.goalTargetIds ?? [],
   );
   const [suggesting, setSuggesting] = useState(false);
+  const [signInClientId, setSignInClientId] = useState<string | null>(null);
 
   const toggleGoal = (id: string) => {
     setGoalTargetIds(prev =>
@@ -370,7 +497,7 @@ export function EngagementDialog({
     onSave({ title: title.trim(), description: description.trim(), status, goalTargetIds });
   };
 
-  const suggest = useCallback(async () => {
+  const doSuggest = useCallback(async () => {
     setSuggesting(true);
     try {
       const result = await suggestEngagement({
@@ -378,43 +505,69 @@ export function EngagementDialog({
         goals: operation.goals.map(g => g.description),
         existingEngagements: initial ? [initial.title ?? ''] : [],
       });
-      if (result) {
-        setTitle(result.title);
-        setDescription(result.description);
-      } else {
+      if (!result) {
         alert(
           'AI suggestion unavailable.\n\n' +
-          'Open public/ai-config.json and set your API key:\n' +
-          '• copilot: add "apiKey" (GitHub personal access token with Copilot access)\n' +
-          '• openai:  add "apiKey" (OpenAI API key) and set "backend": "openai"\n' +
-          '• custom:  set "endpoint" to your Ollama-compatible URL and "backend": "custom"',
+          'Open public/ai-config.json and configure a backend:\n' +
+          '• copilot: add "clientId" (GitHub OAuth App) or "apiKey" (GitHub PAT)\n' +
+          '• openai:  add "apiKey" and set "backend": "openai"\n' +
+          '• custom:  set "endpoint" and "backend": "custom"',
         );
+      } else if (result.kind === 'needs-auth') {
+        if (result.clientId) {
+          setSignInClientId(result.clientId);
+        } else {
+          alert(
+            'No GitHub token found.\n\n' +
+            'Options:\n' +
+            '• Sign in with "gh auth login" (GitHub CLI) — auto-detected at runtime\n' +
+            '• Add "copilot": { "apiKey": "<PAT>" } in public/ai-config.json\n' +
+            '• Add "copilot": { "clientId": "<OAuth App ID>" } for in-app sign-in',
+          );
+        }
+      } else {
+        setTitle(result.title);
+        setDescription(result.description);
       }
     } finally {
       setSuggesting(false);
     }
   }, [operation, initial]);
 
+  // After a successful sign-in, retry the suggestion automatically
+  const handleSignInSuccess = useCallback(() => {
+    setSignInClientId(null);
+    void doSuggest();
+  }, [doSuggest]);
+
   return (
-    <Overlay title={initial?.title ? 'Edit Engagement' : 'New Engagement'} onClose={onClose}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-        <button
-          onClick={suggest}
-          disabled={suggesting}
-          style={{
-            fontSize: 12,
-            background: '#1e3a5f',
-            color: '#89b4fa',
-            border: '1px solid #1e4a8f',
-            borderRadius: 6,
-            padding: '5px 12px',
-            cursor: suggesting ? 'wait' : 'pointer',
-            fontFamily: 'inherit',
-          }}
-        >
-          {suggesting ? '⏳ Thinking…' : '✨ AI Suggest'}
-        </button>
-      </div>
+    <>
+      {signInClientId && (
+        <GitHubSignInDialog
+          clientId={signInClientId}
+          onSuccess={handleSignInSuccess}
+          onClose={() => setSignInClientId(null)}
+        />
+      )}
+      <Overlay title={initial?.title ? 'Edit Engagement' : 'New Engagement'} onClose={onClose}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+          <button
+            onClick={doSuggest}
+            disabled={suggesting}
+            style={{
+              fontSize: 12,
+              background: '#1e3a5f',
+              color: '#89b4fa',
+              border: '1px solid #1e4a8f',
+              borderRadius: 6,
+              padding: '5px 12px',
+              cursor: suggesting ? 'wait' : 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            {suggesting ? '⏳ Thinking…' : '✨ AI Suggest'}
+          </button>
+        </div>
 
       <Field label="Title">
         <input
@@ -492,5 +645,6 @@ export function EngagementDialog({
         <PrimaryButton onClick={save} disabled={!title.trim()}>Save</PrimaryButton>
       </div>
     </Overlay>
+    </>
   );
 }

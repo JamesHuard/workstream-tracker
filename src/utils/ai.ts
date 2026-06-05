@@ -1,4 +1,5 @@
 import type { AiConfig } from '../types';
+import { getCachedToken, setCachedToken, detectCliToken } from './github-auth';
 
 const DEFAULT_CONFIG: AiConfig = {
   backend: 'copilot',
@@ -30,6 +31,18 @@ interface SuggestOptions {
   existingEngagements: string[];
 }
 
+/**
+ * Result of a suggestion request.
+ * - `success` — title/description populated from the model
+ * - `needs-auth` — no token available; `clientId` is set when device flow is configured
+ * - `null` — call succeeded but the model returned unusable output, or a
+ *             non-auth error occurred (already logged to console)
+ */
+export type SuggestResult =
+  | { kind: 'success'; title: string; description: string }
+  | { kind: 'needs-auth'; clientId: string | null }
+  | null;
+
 /** Call an OpenAI-compatible chat completions endpoint. */
 async function callChatCompletions(
   endpoint: string,
@@ -57,9 +70,22 @@ async function callChatCompletions(
   return (data.choices?.[0]?.message?.content as string | undefined) ?? '';
 }
 
-export async function suggestEngagement(
-  opts: SuggestOptions,
-): Promise<{ title: string; description: string } | null> {
+/** Resolve the best available token for the copilot backend. */
+async function resolveCopilotToken(configKey: string | undefined): Promise<string | null> {
+  if (configKey) return configKey;
+  // 1. Previously stored token (device-flow or cached CLI token)
+  const cached = getCachedToken();
+  if (cached) return cached;
+  // 2. Auto-detect from GitHub CLI hosts.yml
+  const cli = await detectCliToken();
+  if (cli) {
+    setCachedToken(cli); // cache for subsequent calls
+    return cli;
+  }
+  return null;
+}
+
+export async function suggestEngagement(opts: SuggestOptions): Promise<SuggestResult> {
   const config = await loadAiConfig();
   const prompt = [
     `Operation: ${opts.operationTitle}`,
@@ -75,12 +101,9 @@ export async function suggestEngagement(
     if (config.backend === 'copilot') {
       const endpoint =
         config.copilot.endpoint ?? 'https://api.githubcopilot.com/chat/completions';
-      const apiKey = config.copilot.apiKey ?? '';
+      const apiKey = await resolveCopilotToken(config.copilot.apiKey);
       if (!apiKey) {
-        console.warn(
-          '[AI] Copilot backend requires an API key. Set copilot.apiKey in public/ai-config.json.',
-        );
-        return null;
+        return { kind: 'needs-auth', clientId: config.copilot.clientId ?? null };
       }
       text = await callChatCompletions(endpoint, config.copilot.model, prompt, apiKey);
     } else if (config.backend === 'openai') {
@@ -93,7 +116,7 @@ export async function suggestEngagement(
       }
       text = await callChatCompletions(endpoint, config.openai.model, prompt, config.openai.apiKey);
     } else {
-      // Custom / Ollama-style endpoint (may use chat completions or generate format)
+      // Custom / Ollama-style endpoint
       const resp = await fetch(config.custom.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -106,7 +129,10 @@ export async function suggestEngagement(
 
     const match = text.match(/\{[\s\S]*\}/);
     if (!match) return null;
-    return JSON.parse(match[0]) as { title: string; description: string };
+    return {
+      kind: 'success',
+      ...(JSON.parse(match[0]) as { title: string; description: string }),
+    };
   } catch (e) {
     console.warn('[AI] Suggestion failed', e);
     return null;

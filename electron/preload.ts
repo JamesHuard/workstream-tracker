@@ -8,4 +8,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('md:write-file', filePath, content),
   openMarkdownFile: (): Promise<string | null> =>
     ipcRenderer.invoke('md:open-file'),
+  detectGitHubToken: (): Promise<string | null> =>
+    ipcRenderer.invoke('gh:detect-token'),
+  openExternalUrl: (url: string): Promise<void> =>
+    ipcRenderer.invoke('gh:open-url', url),
 })

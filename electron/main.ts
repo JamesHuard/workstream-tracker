@@ -1,7 +1,8 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs/promises'
+import os from 'node:os'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -46,6 +47,26 @@ app.whenReady().then(() => {
     })
     if (canceled || filePaths.length === 0) return null
     return await fs.readFile(filePaths[0], 'utf8')
+  })
+
+  // ── GitHub auth helpers ─────────────────────────────────────────────────
+  ipcMain.handle('gh:detect-token', async () => {
+    try {
+      const hostsFile =
+        process.platform === 'win32'
+          ? path.join(process.env.APPDATA ?? os.homedir(), 'GitHub CLI', 'hosts.yml')
+          : path.join(os.homedir(), '.config', 'gh', 'hosts.yml')
+      const content = await fs.readFile(hostsFile, 'utf8')
+      // The hosts.yml format has `oauth_token: gho_xxxx` under the github.com key
+      const match = content.match(/oauth_token:\s*(\S+)/)
+      return match ? match[1] : null
+    } catch {
+      return null
+    }
+  })
+
+  ipcMain.handle('gh:open-url', async (_event, url: string) => {
+    await shell.openExternal(url)
   })
 
   createWindow()

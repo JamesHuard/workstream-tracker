@@ -9,6 +9,8 @@ declare global {
       chooseMarkdownFile: (defaultPath?: string) => Promise<string | null>
       writeMarkdownFile: (filePath: string, content: string) => Promise<void>
       openMarkdownFile: () => Promise<string | null>
+      detectGitHubToken: () => Promise<string | null>
+      openExternalUrl: (url: string) => Promise<void>
     }
   }
 }

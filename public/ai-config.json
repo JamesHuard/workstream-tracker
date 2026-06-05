@@ -4,7 +4,8 @@
   "copilot": {
     "model": "gpt-4o",
     "apiKey": "",
-    "_comment": "Set apiKey to your GitHub personal access token (with Copilot access). Endpoint defaults to https://api.githubcopilot.com/chat/completions"
+    "clientId": "",
+    "_comment": "apiKey: GitHub PAT with Copilot access (takes priority). clientId: GitHub OAuth App ID for in-app 'Sign in with GitHub' flow (device flow). If neither is set, the GitHub CLI token (~/.config/gh/hosts.yml) is used automatically. Endpoint defaults to https://api.githubcopilot.com/chat/completions"
   },
   "openai": {
     "model": "gpt-4o",
