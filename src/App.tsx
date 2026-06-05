@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { StoreProvider, useStore } from './store';
 import { loadState, saveMdPath, loadMdPath } from './utils/storage';
-import { generateMarkdown, downloadMarkdown } from './utils/markdown';
+import { generateMarkdown, downloadMarkdown, parseMarkdown } from './utils/markdown';
 import StrategyGroup from './components/StrategyGroup';
 import { StrategyDialog } from './components/EditDialogs';
 import './App.css';
@@ -36,6 +36,42 @@ function AppInner() {
       console.warn('Failed to write markdown file', err);
     });
   }, [state, mdSavePath]);
+
+  // ── Load workstream from a markdown file ─────────────────────────────────
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  function applyParsedMarkdown(text: string) {
+    const parsed = parseMarkdown(text);
+    if (!parsed) {
+      setLoadError('Could not parse the selected file. Make sure it is a Workstream Tracker export.');
+      return;
+    }
+    setLoadError(null);
+    dispatch({ type: 'LOAD_STATE', state: parsed });
+  }
+
+  async function handleLoadMarkdown() {
+    if (window.electronAPI) {
+      const content = await window.electronAPI.openMarkdownFile();
+      if (content !== null) applyParsedMarkdown(content);
+    } else {
+      // Browser fallback: trigger a hidden file input
+      fileInputRef.current?.click();
+    }
+  }
+
+  function handleFileInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      applyParsedMarkdown((ev.target?.result as string) ?? '');
+    };
+    reader.readAsText(file);
+    // Reset so the same file can be re-selected
+    e.target.value = '';
+  }
 
   // ── Open file picker and persist chosen path ─────────────────────────────
   async function handleChooseSaveFile() {
@@ -88,6 +124,13 @@ function AppInner() {
           </button>
           <div className="topbar-divider" />
           <button
+            className="btn btn-ghost"
+            onClick={handleLoadMarkdown}
+            title="Load a workstream from a Markdown file"
+          >
+            📂 Load from MD
+          </button>
+          <button
             className="btn btn-secondary"
             onClick={handleChooseSaveFile}
             title={
@@ -106,6 +149,23 @@ function AppInner() {
           </button>
         </div>
       </header>
+
+      {/* ── Hidden file input for browser MD load fallback ─────────────── */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".md,text/markdown"
+        style={{ display: 'none' }}
+        onChange={handleFileInputChange}
+      />
+
+      {/* ── Load error banner ───────────────────────────────────────────── */}
+      {loadError && (
+        <div className="load-error-banner" role="alert">
+          <span>{loadError}</span>
+          <button className="load-error-dismiss" onClick={() => setLoadError(null)}>✕</button>
+        </div>
+      )}
 
       {/* ── Keyboard shortcuts ──────────────────────────────────────────── */}
       <KeyboardShortcuts />

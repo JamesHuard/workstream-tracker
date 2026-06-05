@@ -144,3 +144,30 @@
   font-size: 14px;
   color: #6c7086;
 }
+
+/* ─── Load error banner ───────────────────────────────────────────────────── */
+
+.load-error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 20px;
+  background: #3b1a1a;
+  border-bottom: 1px solid #7f1d1d;
+  color: #fca5a5;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.load-error-dismiss {
+  background: none;
+  border: none;
+  color: #fca5a5;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 4px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.load-error-dismiss:hover { color: #fff; }

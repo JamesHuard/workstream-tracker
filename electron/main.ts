@@ -38,6 +38,16 @@ app.whenReady().then(() => {
     await fs.writeFile(filePath, content, 'utf8')
   })
 
+  ipcMain.handle('md:open-file', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: 'Load Workstream from Markdown',
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
+      properties: ['openFile'],
+    })
+    if (canceled || filePaths.length === 0) return null
+    return await fs.readFile(filePaths[0], 'utf8')
+  })
+
   createWindow()
 })
 

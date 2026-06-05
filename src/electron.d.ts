@@ -8,6 +8,7 @@ declare global {
       platform: string
       chooseMarkdownFile: (defaultPath?: string) => Promise<string | null>
       writeMarkdownFile: (filePath: string, content: string) => Promise<void>
+      openMarkdownFile: () => Promise<string | null>
     }
   }
 }

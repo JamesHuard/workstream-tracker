@@ -6,4 +6,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('md:choose-file', defaultPath),
   writeMarkdownFile: (filePath: string, content: string): Promise<void> =>
     ipcRenderer.invoke('md:write-file', filePath, content),
+  openMarkdownFile: (): Promise<string | null> =>
+    ipcRenderer.invoke('md:open-file'),
 })
