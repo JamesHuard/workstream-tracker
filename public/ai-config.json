@@ -1,0 +1,10 @@
+{
+  "backend": "copilot",
+  "copilot": {
+    "model": "gpt-4o"
+  },
+  "custom": {
+    "endpoint": "http://localhost:11434/api/generate",
+    "model": "llama3"
+  }
+}
