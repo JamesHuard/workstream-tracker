@@ -3,6 +3,10 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import os from 'node:os'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+
+const execFileAsync = promisify(execFile)
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -51,18 +55,40 @@ app.whenReady().then(() => {
 
   // ── GitHub auth helpers ─────────────────────────────────────────────────
   ipcMain.handle('gh:detect-token', async () => {
+    // 1. Try `gh auth token` — most reliable; works regardless of where
+    //    hosts.yml lives and handles multi-account setups automatically.
     try {
-      const hostsFile =
-        process.platform === 'win32'
-          ? path.join(process.env.APPDATA ?? os.homedir(), 'GitHub CLI', 'hosts.yml')
-          : path.join(os.homedir(), '.config', 'gh', 'hosts.yml')
-      const content = await fs.readFile(hostsFile, 'utf8')
-      // The hosts.yml format has `oauth_token: gho_xxxx` under the github.com key
-      const match = content.match(/oauth_token:\s*(\S+)/)
-      return match ? match[1] : null
+      const ghBin = process.platform === 'win32' ? 'gh.exe' : 'gh'
+      const { stdout } = await execFileAsync(ghBin, ['auth', 'token'], { timeout: 5000 })
+      const token = stdout.trim()
+      if (token) return token
     } catch {
-      return null
+      // gh not in PATH, not logged in, or too old to support `auth token`
     }
+
+    // 2. Fall back to reading hosts.yml directly.
+    //    On Windows check both APPDATA (Roaming) and LOCALAPPDATA so we cover
+    //    all known gh CLI installation variants.
+    const hostsFileCandidates: string[] =
+      process.platform === 'win32'
+        ? [
+            path.join(process.env.APPDATA ?? os.homedir(), 'GitHub CLI', 'hosts.yml'),
+            path.join(process.env.LOCALAPPDATA ?? os.homedir(), 'GitHub CLI', 'hosts.yml'),
+          ]
+        : [path.join(os.homedir(), '.config', 'gh', 'hosts.yml')]
+
+    for (const hostsFile of hostsFileCandidates) {
+      try {
+        const content = await fs.readFile(hostsFile, 'utf8')
+        // hosts.yml has `oauth_token: gho_xxxx` under the github.com key
+        const match = content.match(/oauth_token:\s*(\S+)/)
+        if (match) return match[1]
+      } catch {
+        // file not found or unreadable; try next candidate
+      }
+    }
+
+    return null
   })
 
   ipcMain.handle('gh:open-url', async (_event, url: string) => {
